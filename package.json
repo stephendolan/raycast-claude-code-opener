@@ -37,20 +37,8 @@
           "value": "Terminal"
         },
         {
-          "title": "iTerm2",
-          "value": "iTerm2"
-        },
-        {
-          "title": "Warp",
-          "value": "Warp"
-        },
-        {
           "title": "Alacritty",
           "value": "Alacritty"
-        },
-        {
-          "title": "Kitty",
-          "value": "Kitty"
         }
       ]
     }

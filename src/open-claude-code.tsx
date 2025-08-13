@@ -26,7 +26,7 @@ const execAsync = promisify(exec);
 
 interface Preferences {
   claudeBinaryPath: string;
-  terminalApp: "Terminal" | "iTerm2" | "Warp" | "Alacritty" | "Kitty";
+  terminalApp: "Terminal" | "Alacritty";
 }
 
 interface Favorite {
@@ -94,10 +94,7 @@ function getDirectoryName(dirPath: string): string {
 // Terminal app bundle identifiers and app names
 const TERMINAL_APPS: Record<string, { bundleId: string; name: string }> = {
   Terminal: { bundleId: "com.apple.Terminal", name: "Terminal" },
-  iTerm2: { bundleId: "com.googlecode.iterm2", name: "iTerm" },
-  Warp: { bundleId: "dev.warp.Warp", name: "Warp" },
   Alacritty: { bundleId: "org.alacritty", name: "Alacritty" },
-  Kitty: { bundleId: "net.kovidgoyal.kitty", name: "Kitty" },
 };
 
 async function openInTerminal(favorite: Favorite, preferences: Preferences, onSuccess: () => void): Promise<void> {
@@ -115,7 +112,7 @@ async function openInTerminal(favorite: Favorite, preferences: Preferences, onSu
       throw new Error(`Unknown terminal app: ${preferences.terminalApp}`);
     }
 
-    // For Terminal.app and iTerm2, we can use AppleScript for better control
+    // Terminal.app uses AppleScript for better control
     if (preferences.terminalApp === "Terminal") {
       const command = `cd "${expandedPath.replace(/"/g, '\\"')}" && "${claudeBinary.replace(/"/g, '\\"')}"`;
       const script = `
@@ -128,25 +125,6 @@ async function openInTerminal(favorite: Favorite, preferences: Preferences, onSu
       onSuccess();
       return;
     }
-    
-    if (preferences.terminalApp === "iTerm2") {
-      const command = `cd "${expandedPath.replace(/"/g, '\\"')}" && "${claudeBinary.replace(/"/g, '\\"')}"`;
-      const script = `
-        tell application "iTerm"
-          activate
-          create window with default profile
-          tell current session of current window
-            write text "${command.replace(/"/g, '\\"')}"
-          end tell
-        end tell
-      `;
-      await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`);
-      onSuccess();
-      return;
-    }
-
-    // For other terminals, we need to launch them with the command as an argument
-    // Different terminals have different ways to accept commands
     
     if (preferences.terminalApp === "Alacritty") {
       // Alacritty: Open a new window and run commands
@@ -184,39 +162,7 @@ cd '${expandedPath.replace(/'/g, "'\\''")}'
       return;
     }
     
-    if (preferences.terminalApp === "Warp") {
-      // Warp can open directly in a directory
-      await execAsync(`open -n -a Warp "${expandedPath}"`);
-      
-      // Then send the command after a delay
-      setTimeout(async () => {
-        try {
-          const script = `tell application "System Events"
-  delay 0.5
-  keystroke "${claudeBinary.replace(/"/g, '\\"').replace(/'/g, "\\'")}"
-  key code 36
-end tell`;
-          await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`);
-        } catch (error) {
-          console.error("Failed to send command to Warp:", error);
-        }
-      }, 1500);
-      
-      onSuccess();
-      return;
-    }
-    
-    if (preferences.terminalApp === "Kitty") {
-      // Kitty can run commands with --
-      const userShell = process.env.SHELL || '/bin/bash';
-      const command = `cd "${expandedPath.replace(/"/g, '\\"')}" && "${claudeBinary.replace(/"/g, '\\"')}"`;
-      await execAsync(`open -n -a Kitty --args ${userShell} -c '${command.replace(/'/g, "'\"'\"'")}'`);
-      
-      onSuccess();
-      return;
-    }
-    
-    // Fallback for unknown terminals
+    // Fallback for unknown terminals (shouldn't happen with our limited options)
     throw new Error(`Unsupported terminal: ${preferences.terminalApp}`);
   } catch (error) {
     showToast({
