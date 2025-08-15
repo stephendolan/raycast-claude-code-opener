@@ -11,8 +11,6 @@ import {
   useNavigation,
   confirmAlert,
   Alert,
-  open,
-  getApplications,
 } from "@raycast/api";
 import { useState, useEffect, useMemo } from "react";
 import { randomUUID } from "crypto";
@@ -91,7 +89,6 @@ function getDirectoryName(dirPath: string): string {
   return path.basename(dirPath) || path.dirname(dirPath);
 }
 
-// Terminal app bundle identifiers and app names
 const TERMINAL_APPS: Record<string, { bundleId: string; name: string }> = {
   Terminal: { bundleId: "com.apple.Terminal", name: "Terminal" },
   Alacritty: { bundleId: "org.alacritty", name: "Alacritty" },
@@ -100,69 +97,122 @@ const TERMINAL_APPS: Record<string, { bundleId: string; name: string }> = {
 async function openInTerminal(favorite: Favorite, preferences: Preferences, onSuccess: () => void): Promise<void> {
   const expandedPath = expandTilde(favorite.path);
   const claudeBinary = expandTilde(preferences.claudeBinaryPath);
-  
-  console.log(`Opening terminal: ${preferences.terminalApp}`);
-  console.log(`Directory: ${expandedPath}`);
-  console.log(`Claude binary: ${claudeBinary}`);
 
   try {
     const terminalInfo = TERMINAL_APPS[preferences.terminalApp];
-    
+
     if (!terminalInfo) {
       throw new Error(`Unknown terminal app: ${preferences.terminalApp}`);
     }
 
-    // Terminal.app uses AppleScript for better control
     if (preferences.terminalApp === "Terminal") {
-      const command = `cd "${expandedPath.replace(/"/g, '\\"')}" && "${claudeBinary.replace(/"/g, '\\"')}"`;
-      const script = `
-        tell application "Terminal"
-          activate
-          do script "${command.replace(/"/g, '\\"')}"
+      const command = `cd '${expandedPath.replace(/'/g, "'\\''")}'
+clear
+'${claudeBinary.replace(/'/g, "'\\''")}'
+exec bash`;
+
+      const scriptFile = `/tmp/terminal-cmd-${Date.now()}.sh`;
+      await writeFile(scriptFile, command, { mode: 0o755 });
+
+      const checkScript = `
+        tell application "System Events"
+          set isRunning to (name of processes) contains "Terminal"
         end tell
+        
+        if isRunning then
+          tell application "Terminal"
+            set windowCount to count of windows
+            if windowCount > 0 then
+              set frontWindow to front window
+              set tabCount to count of tabs of frontWindow
+              set currentTab to selected tab of frontWindow
+              try
+                set isBusy to busy of currentTab
+                set processCount to count of processes of currentTab
+              catch
+                set isBusy to false
+                set processCount to 1
+              end try
+              return "running:" & windowCount & ":" & tabCount & ":" & isBusy & ":" & processCount
+            else
+              return "running:0:0:false:0"
+            end if
+          end tell
+        else
+          return "not_running"
+        end if
       `;
-      await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`);
+
+      const { stdout: checkResult } = await execAsync(
+        `osascript -e '${checkScript.replace(/'/g, "'\"'\"'").replace(/\n/g, "' -e '")}'`,
+      );
+
+      let openScript: string;
+      const result = checkResult.trim();
+
+      if (result === "not_running") {
+        openScript = `
+          tell application "Terminal"
+            activate
+            delay 0.5
+            do script "bash ${scriptFile} && rm ${scriptFile}" in front window
+          end tell
+        `;
+      } else {
+        const [, windowCount, tabCount, isBusy] = result.split(":");
+
+        if (windowCount === "0") {
+          openScript = `
+            tell application "Terminal"
+              do script "bash ${scriptFile} && rm ${scriptFile}"
+              activate
+            end tell
+          `;
+        } else if (tabCount === "1" && (isBusy === "false" || processCount === "1")) {
+          openScript = `
+            tell application "Terminal"
+              do script "bash ${scriptFile} && rm ${scriptFile}" in front window
+              activate
+            end tell
+          `;
+        } else {
+          openScript = `
+            tell application "Terminal"
+              do script "bash ${scriptFile} && rm ${scriptFile}"
+              activate
+            end tell
+          `;
+        }
+      }
+
+      await execAsync(`osascript -e '${openScript.replace(/'/g, "'\"'\"'").replace(/\n/g, "' -e '")}'`);
+
       onSuccess();
       return;
     }
-    
+
     if (preferences.terminalApp === "Alacritty") {
-      // Alacritty: Open a new window and run commands
-      // Instead of a wrapper script, use Alacritty's command execution
-      
-      // Create an init file that will be sourced
       const initScript = `/tmp/claude-init-${Date.now()}.sh`;
       const initContent = `
-# Change to the target directory
 cd '${expandedPath.replace(/'/g, "'\\''")}'
-
-# Run Claude
 '${claudeBinary.replace(/'/g, "'\\''")}'
 `;
-      
+
       await writeFile(initScript, initContent, { mode: 0o644 });
-      
-      // Launch Alacritty with a command that sources the init file then starts an interactive shell
-      // Use the user's actual shell with --login to get full environment
-      const userShell = process.env.SHELL || '/bin/zsh';
-      const shellName = path.basename(userShell);
-      
-      // Command to run: source the init file, clean it up, then stay in interactive mode
+
+      const userShell = process.env.SHELL || "/bin/zsh";
       const command = `source ${initScript} && rm -f ${initScript}`;
-      
-      // Launch Alacritty with the user's shell in login + interactive mode
+
       await execAsync(`open -n -a Alacritty --args -e ${userShell} --login -i -c "${command.replace(/"/g, '\\"')}"`);
-      
-      // Clean up if the command didn't run
+
       setTimeout(() => {
         unlink(initScript).catch(() => {});
       }, 10000);
-      
+
       onSuccess();
       return;
     }
-    
-    // Fallback for unknown terminals (shouldn't happen with our limited options)
+
     throw new Error(`Unsupported terminal: ${preferences.terminalApp}`);
   } catch (error) {
     showToast({
