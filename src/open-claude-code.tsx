@@ -192,22 +192,24 @@ exec bash`;
     }
 
     if (preferences.terminalApp === "Alacritty") {
+      const userShell = process.env.SHELL || "/bin/zsh";
+      const shellName = path.basename(userShell);
+      
       const initScript = `/tmp/claude-init-${Date.now()}.sh`;
-      const initContent = `
+      const initContent = `#!/usr/bin/env ${shellName}
 cd '${expandedPath.replace(/'/g, "'\\''")}'
+clear
 '${claudeBinary.replace(/'/g, "'\\''")}'
+exec ${userShell} -l
 `;
 
-      await writeFile(initScript, initContent, { mode: 0o644 });
+      await writeFile(initScript, initContent, { mode: 0o755 });
 
-      const userShell = process.env.SHELL || "/bin/zsh";
-      const command = `source ${initScript} && rm -f ${initScript}`;
-
-      await execAsync(`open -n -a Alacritty --args -e ${userShell} --login -i -c "${command.replace(/"/g, '\\"')}"`);
+      await execAsync(`open -n -a Alacritty --args -e ${userShell} -l -c "${initScript} && rm -f ${initScript}"`);
 
       setTimeout(() => {
         unlink(initScript).catch(() => {});
-      }, 10000);
+      }, 5000);
 
       onSuccess();
       return;
