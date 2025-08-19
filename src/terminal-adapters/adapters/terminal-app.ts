@@ -60,7 +60,7 @@ exec ${userShell}`;
         tell application "Terminal"
           activate
           delay 0.5
-          do script "${userShell} -l ${scriptFile} && rm ${scriptFile}" in front window
+          do script "${userShell} -l -i -c 'source ${scriptFile} && rm ${scriptFile}'" in front window
         end tell
       `;
     } else {
@@ -69,21 +69,21 @@ exec ${userShell}`;
       if (windowCount === "0") {
         openScript = `
           tell application "Terminal"
-            do script "${userShell} -l ${scriptFile} && rm ${scriptFile}"
+            do script "${userShell} -l -i -c 'source ${scriptFile} && rm ${scriptFile}'"
             activate
           end tell
         `;
       } else if (tabCount === "1" && (isBusy === "false" || processCount === "1")) {
         openScript = `
           tell application "Terminal"
-            do script "${userShell} -l ${scriptFile} && rm ${scriptFile}" in front window
+            do script "${userShell} -l -i -c 'source ${scriptFile} && rm ${scriptFile}'" in front window
             activate
           end tell
         `;
       } else {
         openScript = `
           tell application "Terminal"
-            do script "${userShell} -l ${scriptFile} && rm ${scriptFile}"
+            do script "${userShell} -l -i -c 'source ${scriptFile} && rm ${scriptFile}'"
             activate
           end tell
         `;

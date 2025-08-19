@@ -20,7 +20,7 @@ clear
 
     await writeFile(initScript, initContent, { mode: 0o644 });
 
-    await execAsync(`open -n -a Alacritty --args -e ${userShell} -l -c "source ${initScript} && rm -f ${initScript}; exec ${userShell} -l"`);
+    await execAsync(`open -n -a Alacritty --args -e ${userShell} -l -i -c "source ${initScript} && rm -f ${initScript}; exec ${userShell} -l"`);
 
     setTimeout(() => {
       unlink(initScript).catch(() => {});
