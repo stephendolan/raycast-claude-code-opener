@@ -3,7 +3,7 @@
   "name": "claude-code-opener",
   "title": "Claude Code Opener",
   "description": "Open Claude Code sessions quickly.",
-  "icon": "extension-icon.png",
+  "icon": "icon.png",
   "author": "stephendolan",
   "license": "MIT",
   "commands": [
