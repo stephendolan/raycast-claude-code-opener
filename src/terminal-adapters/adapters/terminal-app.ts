@@ -1,30 +1,9 @@
 import { exec } from "child_process";
 import { promisify } from "util";
-import { writeFile, unlink } from "fs/promises";
-import path from "path";
+import { writeFile } from "fs/promises";
+import { BaseTerminalAdapter } from "../base";
 
 const execAsync = promisify(exec);
-
-export interface TerminalAdapter {
-  name: string;
-  bundleId: string;
-  open(directory: string, claudeBinary: string): Promise<void>;
-}
-
-export abstract class BaseTerminalAdapter implements TerminalAdapter {
-  abstract name: string;
-  abstract bundleId: string;
-
-  abstract open(directory: string, claudeBinary: string): Promise<void>;
-
-  protected escapeShellArg(arg: string): string {
-    return arg.replace(/'/g, "'\\''");
-  }
-
-  protected getUserShell(): string {
-    return process.env.SHELL || "/bin/zsh";
-  }
-}
 
 export class TerminalAppAdapter extends BaseTerminalAdapter {
   name = "Terminal";
@@ -112,44 +91,4 @@ exec bash`;
 
     await execAsync(`osascript -e '${openScript.replace(/'/g, "'\"'\"'").replace(/\n/g, "' -e '")}'`);
   }
-}
-
-export class AlacrittyAdapter extends BaseTerminalAdapter {
-  name = "Alacritty";
-  bundleId = "org.alacritty";
-
-  async open(directory: string, claudeBinary: string): Promise<void> {
-    const userShell = this.getUserShell();
-    const shellName = path.basename(userShell);
-
-    const initScript = `/tmp/claude-init-${Date.now()}.sh`;
-    const initContent = `#!/usr/bin/env ${shellName}
-cd '${this.escapeShellArg(directory)}'
-clear
-'${this.escapeShellArg(claudeBinary)}'
-exec ${userShell} -l
-`;
-
-    await writeFile(initScript, initContent, { mode: 0o755 });
-
-    await execAsync(`open -n -a Alacritty --args -e ${userShell} -l -c "${initScript} && rm -f ${initScript}"`);
-
-    setTimeout(() => {
-      unlink(initScript).catch(() => {});
-    }, 5000);
-  }
-}
-
-// Registry of available terminal adapters
-const TERMINAL_ADAPTERS = new Map<string, TerminalAdapter>([
-  ["Terminal", new TerminalAppAdapter()],
-  ["Alacritty", new AlacrittyAdapter()],
-]);
-
-export function getTerminalAdapter(terminalApp: string): TerminalAdapter | undefined {
-  return TERMINAL_ADAPTERS.get(terminalApp);
-}
-
-export function getSupportedTerminals(): string[] {
-  return Array.from(TERMINAL_ADAPTERS.keys());
 }
