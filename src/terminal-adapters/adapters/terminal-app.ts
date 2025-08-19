@@ -10,13 +10,14 @@ export class TerminalAppAdapter extends BaseTerminalAdapter {
   bundleId = "com.apple.Terminal";
 
   async open(directory: string, claudeBinary: string): Promise<void> {
+    const userShell = this.getUserShell();
     const command = `cd '${this.escapeShellArg(directory)}'
 clear
 '${this.escapeShellArg(claudeBinary)}'
-exec bash`;
+exec ${userShell}`;
 
     const scriptFile = `/tmp/terminal-cmd-${Date.now()}.sh`;
-    await writeFile(scriptFile, command, { mode: 0o755 });
+    await writeFile(scriptFile, command, { mode: 0o644 });
 
     const checkScript = `
       tell application "System Events"
@@ -59,7 +60,7 @@ exec bash`;
         tell application "Terminal"
           activate
           delay 0.5
-          do script "bash ${scriptFile} && rm ${scriptFile}" in front window
+          do script "${userShell} -l ${scriptFile} && rm ${scriptFile}" in front window
         end tell
       `;
     } else {
@@ -68,21 +69,21 @@ exec bash`;
       if (windowCount === "0") {
         openScript = `
           tell application "Terminal"
-            do script "bash ${scriptFile} && rm ${scriptFile}"
+            do script "${userShell} -l ${scriptFile} && rm ${scriptFile}"
             activate
           end tell
         `;
       } else if (tabCount === "1" && (isBusy === "false" || processCount === "1")) {
         openScript = `
           tell application "Terminal"
-            do script "bash ${scriptFile} && rm ${scriptFile}" in front window
+            do script "${userShell} -l ${scriptFile} && rm ${scriptFile}" in front window
             activate
           end tell
         `;
       } else {
         openScript = `
           tell application "Terminal"
-            do script "bash ${scriptFile} && rm ${scriptFile}"
+            do script "${userShell} -l ${scriptFile} && rm ${scriptFile}"
             activate
           end tell
         `;
