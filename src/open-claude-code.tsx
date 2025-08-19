@@ -12,15 +12,16 @@ import {
   confirmAlert,
   Alert,
 } from "@raycast/api";
+import { FAVORITE_ICON_NAMES, getIcon } from "./favorite-icons";
+import { getTerminalAdapter } from "./terminal-adapters";
 import { useState, useEffect, useMemo } from "react";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
-import { exec } from "child_process";
-import { promisify } from "util";
 import path from "path";
-import { writeFile, unlink } from "fs/promises";
 
-const execAsync = promisify(exec);
+// Constants
+const STORAGE_KEY = "claude-code-favorites";
+const CURRENT_VERSION = 1;
 
 interface Preferences {
   claudeBinaryPath: string;
@@ -31,6 +32,7 @@ interface Favorite {
   id: string;
   path: string;
   name?: string;
+  icon?: string;
   addedAt: Date;
   lastOpened?: Date;
   openCount: number;
@@ -41,8 +43,14 @@ interface FavoritesState {
   version: number;
 }
 
-const STORAGE_KEY = "claude-code-favorites";
-const CURRENT_VERSION = 1;
+// Helper functions
+function showSuccessToast(title: string, message?: string) {
+  showToast({
+    style: Toast.Style.Success,
+    title,
+    message,
+  });
+}
 
 function getRelativeTime(date: Date | undefined): string {
   if (!date) return "Never";
@@ -89,147 +97,38 @@ function getDirectoryName(dirPath: string): string {
   return path.basename(dirPath) || path.dirname(dirPath);
 }
 
-const TERMINAL_APPS: Record<string, { bundleId: string; name: string }> = {
-  Terminal: { bundleId: "com.apple.Terminal", name: "Terminal" },
-  Alacritty: { bundleId: "org.alacritty", name: "Alacritty" },
-};
-
 async function openInTerminal(favorite: Favorite, preferences: Preferences, onSuccess: () => void): Promise<void> {
   const expandedPath = expandTilde(favorite.path);
   const claudeBinary = expandTilde(preferences.claudeBinaryPath);
 
   try {
-    const terminalInfo = TERMINAL_APPS[preferences.terminalApp];
+    const adapter = getTerminalAdapter(preferences.terminalApp);
 
-    if (!terminalInfo) {
-      throw new Error(`Unknown terminal app: ${preferences.terminalApp}`);
+    if (!adapter) {
+      throw new Error(`Unsupported terminal: ${preferences.terminalApp}`);
     }
 
-    if (preferences.terminalApp === "Terminal") {
-      const command = `cd '${expandedPath.replace(/'/g, "'\\''")}'
-clear
-'${claudeBinary.replace(/'/g, "'\\''")}'
-exec bash`;
-
-      const scriptFile = `/tmp/terminal-cmd-${Date.now()}.sh`;
-      await writeFile(scriptFile, command, { mode: 0o755 });
-
-      const checkScript = `
-        tell application "System Events"
-          set isRunning to (name of processes) contains "Terminal"
-        end tell
-        
-        if isRunning then
-          tell application "Terminal"
-            set windowCount to count of windows
-            if windowCount > 0 then
-              set frontWindow to front window
-              set tabCount to count of tabs of frontWindow
-              set currentTab to selected tab of frontWindow
-              try
-                set isBusy to busy of currentTab
-                set processCount to count of processes of currentTab
-              catch
-                set isBusy to false
-                set processCount to 1
-              end try
-              return "running:" & windowCount & ":" & tabCount & ":" & isBusy & ":" & processCount
-            else
-              return "running:0:0:false:0"
-            end if
-          end tell
-        else
-          return "not_running"
-        end if
-      `;
-
-      const { stdout: checkResult } = await execAsync(
-        `osascript -e '${checkScript.replace(/'/g, "'\"'\"'").replace(/\n/g, "' -e '")}'`,
-      );
-
-      let openScript: string;
-      const result = checkResult.trim();
-
-      if (result === "not_running") {
-        openScript = `
-          tell application "Terminal"
-            activate
-            delay 0.5
-            do script "bash ${scriptFile} && rm ${scriptFile}" in front window
-          end tell
-        `;
-      } else {
-        const [, windowCount, tabCount, isBusy] = result.split(":");
-
-        if (windowCount === "0") {
-          openScript = `
-            tell application "Terminal"
-              do script "bash ${scriptFile} && rm ${scriptFile}"
-              activate
-            end tell
-          `;
-        } else if (tabCount === "1" && (isBusy === "false" || processCount === "1")) {
-          openScript = `
-            tell application "Terminal"
-              do script "bash ${scriptFile} && rm ${scriptFile}" in front window
-              activate
-            end tell
-          `;
-        } else {
-          openScript = `
-            tell application "Terminal"
-              do script "bash ${scriptFile} && rm ${scriptFile}"
-              activate
-            end tell
-          `;
-        }
-      }
-
-      await execAsync(`osascript -e '${openScript.replace(/'/g, "'\"'\"'").replace(/\n/g, "' -e '")}'`);
-
-      onSuccess();
-      return;
-    }
-
-    if (preferences.terminalApp === "Alacritty") {
-      const userShell = process.env.SHELL || "/bin/zsh";
-      const shellName = path.basename(userShell);
-      
-      const initScript = `/tmp/claude-init-${Date.now()}.sh`;
-      const initContent = `#!/usr/bin/env ${shellName}
-cd '${expandedPath.replace(/'/g, "'\\''")}'
-clear
-'${claudeBinary.replace(/'/g, "'\\''")}'
-exec ${userShell} -l
-`;
-
-      await writeFile(initScript, initContent, { mode: 0o755 });
-
-      await execAsync(`open -n -a Alacritty --args -e ${userShell} -l -c "${initScript} && rm -f ${initScript}"`);
-
-      setTimeout(() => {
-        unlink(initScript).catch(() => {});
-      }, 5000);
-
-      onSuccess();
-      return;
-    }
-
-    throw new Error(`Unsupported terminal: ${preferences.terminalApp}`);
+    await adapter.open(expandedPath, claudeBinary);
+    onSuccess();
+    showSuccessToast("Opened in Terminal", favorite.name || getDirectoryName(favorite.path));
   } catch (error) {
     showToast({
       style: Toast.Style.Failure,
       title: "Failed to open terminal",
       message: error instanceof Error ? error.message : "Unknown error",
     });
-    return;
   }
+}
 
-  showToast({
-    style: Toast.Style.Success,
-    title: "Opened in Terminal",
-    message: favorite.name || getDirectoryName(favorite.path),
-  });
+// Components
+function IconDropdown({ value, onChange }: { value?: string; onChange?: (value: string) => void }) {
+  return (
+    <Form.Dropdown id="icon" title="Icon" value={value} onChange={onChange} defaultValue="Folder">
+      {FAVORITE_ICON_NAMES.map((iconName) => (
+        <Form.Dropdown.Item key={iconName} value={iconName} title={iconName} icon={getIcon(iconName)} />
+      ))}
+    </Form.Dropdown>
+  );
 }
 
 function AddFavoriteForm({ onAdd }: { onAdd: (favorite: Favorite) => void }) {
@@ -237,23 +136,20 @@ function AddFavoriteForm({ onAdd }: { onAdd: (favorite: Favorite) => void }) {
   const [path, setPath] = useState("");
   const [name, setName] = useState("");
 
-  const handleSubmit = (values: { path: string; name: string }) => {
+  const handleSubmit = (values: { path: string; name: string; icon: string }) => {
     const expandedPath = expandTilde(values.path);
     const newFavorite: Favorite = {
       id: randomUUID(),
       path: expandedPath,
       name: values.name || undefined,
+      icon: values.icon || "Folder",
       addedAt: new Date(),
       openCount: 0,
     };
 
     onAdd(newFavorite);
     pop();
-    showToast({
-      style: Toast.Style.Success,
-      title: "Added Favorite",
-      message: newFavorite.name || getDirectoryName(newFavorite.path),
-    });
+    showSuccessToast("Added Favorite", newFavorite.name || getDirectoryName(newFavorite.path));
   };
 
   return (
@@ -272,6 +168,7 @@ function AddFavoriteForm({ onAdd }: { onAdd: (favorite: Favorite) => void }) {
         onChange={setPath}
       />
       <Form.TextField id="name" title="Name (Optional)" placeholder="My Project" value={name} onChange={setName} />
+      <IconDropdown />
     </Form>
   );
 }
@@ -279,20 +176,18 @@ function AddFavoriteForm({ onAdd }: { onAdd: (favorite: Favorite) => void }) {
 function EditFavoriteForm({ favorite, onEdit }: { favorite: Favorite; onEdit: (favorite: Favorite) => void }) {
   const { pop } = useNavigation();
   const [name, setName] = useState(favorite.name || "");
+  const [icon, setIcon] = useState(favorite.icon || "Folder");
 
-  const handleSubmit = (values: { name: string }) => {
+  const handleSubmit = (values: { name: string; icon: string }) => {
     const updatedFavorite = {
       ...favorite,
       name: values.name || undefined,
+      icon: values.icon || "Folder",
     };
 
     onEdit(updatedFavorite);
     pop();
-    showToast({
-      style: Toast.Style.Success,
-      title: "Updated Favorite",
-      message: updatedFavorite.name || getDirectoryName(updatedFavorite.path),
-    });
+    showSuccessToast("Updated Favorite", updatedFavorite.name || getDirectoryName(updatedFavorite.path));
   };
 
   return (
@@ -305,6 +200,7 @@ function EditFavoriteForm({ favorite, onEdit }: { favorite: Favorite; onEdit: (f
     >
       <Form.Description text={`Path: ${favorite.path}`} />
       <Form.TextField id="name" title="Name" placeholder="My Project" value={name} onChange={setName} />
+      <IconDropdown value={icon} onChange={setIcon} />
     </Form>
   );
 }
@@ -389,33 +285,42 @@ export default function Command() {
   };
 
   const filteredAndSortedFavorites = useMemo(() => {
-    let filtered = favorites;
+    const searchLower = searchText.toLowerCase();
 
-    if (searchText) {
-      const searchLower = searchText.toLowerCase();
-      filtered = favorites.filter((fav) => {
-        const name = fav.name?.toLowerCase() || "";
-        const path = fav.path.toLowerCase();
-        const dirName = getDirectoryName(fav.path).toLowerCase();
-        return name.includes(searchLower) || path.includes(searchLower) || dirName.includes(searchLower);
-      });
-    }
+    const matchesSearch = (favorite: Favorite) => {
+      if (!searchText) return true;
 
-    return filtered.sort((a, b) => {
+      const searchableText = [
+        favorite.name?.toLowerCase(),
+        favorite.path.toLowerCase(),
+        getDirectoryName(favorite.path).toLowerCase(),
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return searchableText.includes(searchLower);
+    };
+
+    const compareByRecency = (a: Favorite, b: Favorite) => {
       if (a.lastOpened && b.lastOpened) {
         return b.lastOpened.getTime() - a.lastOpened.getTime();
       }
-      if (a.lastOpened && !b.lastOpened) return -1;
-      if (!a.lastOpened && b.lastOpened) return 1;
+      if (a.lastOpened) return -1;
+      if (b.lastOpened) return 1;
+      return 0;
+    };
 
-      if (a.openCount !== b.openCount) {
-        return b.openCount - a.openCount;
-      }
+    const compareByUsage = (a: Favorite, b: Favorite) => b.openCount - a.openCount;
 
+    const compareByName = (a: Favorite, b: Favorite) => {
       const nameA = a.name || getDirectoryName(a.path);
       const nameB = b.name || getDirectoryName(b.path);
       return nameA.localeCompare(nameB);
-    });
+    };
+
+    return favorites
+      .filter(matchesSearch)
+      .sort((a, b) => compareByRecency(a, b) || compareByUsage(a, b) || compareByName(a, b));
   }, [favorites, searchText]);
 
   return (
@@ -462,7 +367,7 @@ export default function Command() {
           {filteredAndSortedFavorites.map((favorite) => (
             <List.Item
               key={favorite.id}
-              icon={Icon.Folder}
+              icon={getIcon(favorite.icon || "Folder")}
               title={favorite.name || getDirectoryName(favorite.path)}
               subtitle={favorite.name ? favorite.path : undefined}
               accessories={[
@@ -481,7 +386,7 @@ export default function Command() {
                     onAction={() => openInTerminal(favorite, preferences, () => markAsOpened(favorite.id))}
                   />
                   <Action.Push
-                    title="Edit Name"
+                    title="Edit Favorite"
                     icon={Icon.Pencil}
                     target={<EditFavoriteForm favorite={favorite} onEdit={updateFavorite} />}
                     shortcut={{ modifiers: ["cmd"], key: "e" }}
@@ -501,10 +406,7 @@ export default function Command() {
                           style: Alert.ActionStyle.Destructive,
                           onAction: () => {
                             removeFavorite(favorite.id);
-                            showToast({
-                              style: Toast.Style.Success,
-                              title: "Removed Favorite",
-                            });
+                            showSuccessToast("Removed Favorite");
                           },
                         },
                       };

@@ -2,9 +2,10 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "claude-code-opener",
   "title": "Claude Code Opener",
-  "description": "Open Claude Code sessions quickly.",
+  "description": "Quickly open Claude Code in any directory with your preferred terminal.",
   "icon": "icon.png",
   "author": "stephendolan",
+  "categories": ["Developer Tools", "Productivity"],
   "license": "MIT",
   "commands": [
     {
