@@ -588,7 +588,7 @@ export default function Command() {
                     <Action.Push
                       title="Add Favorite"
                       icon={Icon.Plus}
-                      target={<AddFavoriteForm onAdd={addFavorite} />}
+                      target={<AddFavoriteForm onAdd={addFavorite} existingPaths={favorites.map((f) => f.path)} />}
                       shortcut={{ modifiers: ["cmd"], key: "n" }}
                     />
                   </ActionPanel.Section>
