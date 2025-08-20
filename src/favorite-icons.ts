@@ -48,7 +48,7 @@ export type IconName = (typeof FAVORITE_ICON_NAMES)[number];
 
 export function getIcon(name: string): Image {
   const icon = Icon[name as keyof typeof Icon] || Icon.Folder;
-  
+
   return {
     source: icon,
     tintColor: CLAUDE_COLOR,
