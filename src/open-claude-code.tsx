@@ -574,7 +574,7 @@ export default function Command() {
           {filteredAndSortedFavorites.map((favorite) => (
             <List.Item
               key={favorite.id}
-              icon={getIcon(favorite.icon || preferences.defaultFavoriteIcon)}
+              icon={getIcon(favorite.icon || preferences.defaultFavoriteIcon, preferences.defaultFavoriteIcon)}
               title={favorite.name || getDirectoryName(favorite.path)}
               subtitle={favorite.name ? favorite.path : undefined}
               accessories={[

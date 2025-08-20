@@ -1,6 +1,8 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import { writeFile, unlink } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import { TerminalAdapter } from "../types";
 
 const execAsync = promisify(exec);
@@ -14,7 +16,7 @@ export class AlacrittyAdapter implements TerminalAdapter {
     const escapedDir = directory.replace(/'/g, "'\\''");
     const escapedBinary = claudeBinary.replace(/'/g, "'\\''");
 
-    const initScript = `/tmp/claude-init-${Date.now()}.sh`;
+    const initScript = join(tmpdir(), `claude-init-${Date.now()}.sh`);
     const initContent = `cd '${escapedDir}'
 clear
 '${escapedBinary}'

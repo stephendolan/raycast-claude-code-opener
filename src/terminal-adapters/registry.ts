@@ -10,7 +10,3 @@ const adapters: Record<string, TerminalAdapter> = {
 export function getTerminalAdapter(terminalApp: string): TerminalAdapter | undefined {
   return adapters[terminalApp];
 }
-
-export function getSupportedTerminals(): string[] {
-  return Object.keys(adapters);
-}

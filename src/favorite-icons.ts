@@ -46,11 +46,12 @@ export const FAVORITE_ICON_NAMES = [
 
 export type IconName = (typeof FAVORITE_ICON_NAMES)[number];
 
-export function getIcon(name: string): Image {
-  const icon = Icon[name as keyof typeof Icon] || Icon.Folder;
+export function getIcon(name: string, fallback: string = "Folder"): Image {
+  const iconName = name in Icon ? name : fallback in Icon ? fallback : "Folder";
+  const iconValue = Icon[iconName as keyof typeof Icon];
 
   return {
-    source: icon,
+    source: iconValue,
     tintColor: CLAUDE_COLOR,
   };
 }
