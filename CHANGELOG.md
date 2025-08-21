@@ -1,6 +1,6 @@
-# Claude Code Changelog
+# Claude Code Launcher
 
-## [1.1.0] - Unreleased
+## [1.1.0] - {PR_MERGE_DATE}
 
 ### Changed
 - Renamed extension from "Claude Code Opener" to "Claude Code" for cleaner branding
