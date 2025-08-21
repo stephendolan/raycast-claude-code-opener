@@ -1,8 +1,8 @@
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { TerminalAdapter } from "../types";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export class TerminalAppAdapter implements TerminalAdapter {
   name = "Terminal";
@@ -11,32 +11,19 @@ export class TerminalAppAdapter implements TerminalAdapter {
   async open(directory: string, claudeBinary: string): Promise<void> {
     const userShell = process.env.SHELL || "/bin/zsh";
 
-    // Properly escape for shell execution within AppleScript
-    const escapeForShell = (str: string) => str.replace(/'/g, "'\\''");
-    
-    const escapedDir = escapeForShell(directory);
-    const escapedBinary = escapeForShell(claudeBinary);
-    
-    // Build the shell command
-    const shellCommand = `cd '${escapedDir}' && clear && '${escapedBinary}' ; exec ${userShell}`;
-    
-    // Escape for AppleScript - we need to escape backslashes and double quotes
-    const escapeForAppleScript = (str: string) => {
-      return str
-        .replace(/\\/g, "\\\\")  // Escape backslashes first
-        .replace(/"/g, '\\"');    // Then escape double quotes
-    };
-    
-    const escapedCommand = escapeForAppleScript(shellCommand);
-    
-    // Use heredoc-style approach to avoid complex escaping
-    const appleScript = `tell application "Terminal"
-do script "${escapedCommand}"
-activate
-end tell`;
+    const script = `
+      on run argv
+        set targetDir to item 1 of argv
+        set claudePath to item 2 of argv  
+        set shellPath to item 3 of argv
+        
+        tell application "Terminal"
+          do script "cd " & quoted form of targetDir & " && clear && " & quoted form of claudePath & " ; exec " & shellPath
+          activate
+        end tell
+      end run
+    `;
 
-    // Execute with proper escaping for the shell
-    const finalScript = appleScript.replace(/'/g, "'\"'\"'");
-    await execAsync(`osascript -e '${finalScript}'`);
+    await execFileAsync("osascript", ["-e", script, directory, claudeBinary, userShell]);
   }
 }
