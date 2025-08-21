@@ -1,8 +1,5 @@
 import { exec } from "child_process";
 import { promisify } from "util";
-import { writeFile, unlink, mkdtemp, rmdir } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
 import { TerminalAdapter } from "../types";
 
 const execAsync = promisify(exec);
@@ -11,51 +8,35 @@ export class TerminalAppAdapter implements TerminalAdapter {
   name = "Terminal";
   bundleId = "com.apple.Terminal";
 
-  private escapeAppleScript(script: string): string {
-    return script.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  }
-
   async open(directory: string, claudeBinary: string): Promise<void> {
     const userShell = process.env.SHELL || "/bin/zsh";
-    const escapedDir = directory.replace(/'/g, "'\\''");
-    const escapedBinary = claudeBinary.replace(/'/g, "'\\''");
 
-    const command = `cd '${escapedDir}'
-clear
-'${escapedBinary}'
-exec ${userShell}`;
-
-    const tempDir = await mkdtemp(join(tmpdir(), "claude-code-"));
-    const scriptFile = join(tempDir, "run.sh");
-    await writeFile(scriptFile, command, { mode: 0o600 });
-
-    const shellCommand = `${userShell} -l -i -c 'source ${scriptFile} && rm -rf ${tempDir}'`;
-    const escapedCommand = this.escapeAppleScript(shellCommand);
-
-    const openScript = `tell application "Terminal"
+    // Properly escape for shell execution within AppleScript
+    const escapeForShell = (str: string) => str.replace(/'/g, "'\\''");
+    
+    const escapedDir = escapeForShell(directory);
+    const escapedBinary = escapeForShell(claudeBinary);
+    
+    // Build the shell command
+    const shellCommand = `cd '${escapedDir}' && clear && '${escapedBinary}' ; exec ${userShell}`;
+    
+    // Escape for AppleScript - we need to escape backslashes and double quotes
+    const escapeForAppleScript = (str: string) => {
+      return str
+        .replace(/\\/g, "\\\\")  // Escape backslashes first
+        .replace(/"/g, '\\"');    // Then escape double quotes
+    };
+    
+    const escapedCommand = escapeForAppleScript(shellCommand);
+    
+    // Use heredoc-style approach to avoid complex escaping
+    const appleScript = `tell application "Terminal"
 do script "${escapedCommand}"
 activate
 end tell`;
 
-    try {
-      await execAsync(`osascript -e "${this.escapeAppleScript(openScript)}"`);
-
-      setTimeout(async () => {
-        try {
-          await unlink(scriptFile).catch(() => {});
-          await rmdir(tempDir).catch(() => {});
-        } catch (error) {
-          console.error("Failed to clean up temp files:", error);
-        }
-      }, 1000);
-    } catch (error) {
-      try {
-        await unlink(scriptFile).catch(() => {});
-        await rmdir(tempDir).catch(() => {});
-      } catch (cleanupError) {
-        console.error("Failed to clean up temp files after error:", cleanupError);
-      }
-      throw error;
-    }
+    // Execute with proper escaping for the shell
+    const finalScript = appleScript.replace(/'/g, "'\"'\"'");
+    await execAsync(`osascript -e '${finalScript}'`);
   }
 }

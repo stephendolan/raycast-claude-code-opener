@@ -1,8 +1,5 @@
 import { exec } from "child_process";
 import { promisify } from "util";
-import { writeFile, unlink } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
 import { TerminalAdapter } from "../types";
 
 const execAsync = promisify(exec);
@@ -11,27 +8,17 @@ export class AlacrittyAdapter implements TerminalAdapter {
   name = "Alacritty";
   bundleId = "org.alacritty";
 
+  private escapeForShell(str: string): string {
+    return str.replace(/'/g, "'\\''");
+  }
+
   async open(directory: string, claudeBinary: string): Promise<void> {
     const userShell = process.env.SHELL || "/bin/zsh";
-    const escapedDir = directory.replace(/'/g, "'\\''");
-    const escapedBinary = claudeBinary.replace(/'/g, "'\\''");
+    const escapedDir = this.escapeForShell(directory);
+    const escapedBinary = this.escapeForShell(claudeBinary);
 
-    const initScript = join(tmpdir(), `claude-init-${Date.now()}.sh`);
-    const initContent = `cd '${escapedDir}'
-clear
-'${escapedBinary}'
-`;
+    const command = `cd '${escapedDir}' && clear && '${escapedBinary}' ; exec ${userShell} -l`;
 
-    await writeFile(initScript, initContent, { mode: 0o644 });
-
-    try {
-      await execAsync(
-        `open -n -a Alacritty --args -e ${userShell} -l -i -c "source ${initScript} && rm -f ${initScript}; exec ${userShell} -l"`,
-      );
-    } finally {
-      setTimeout(() => {
-        unlink(initScript).catch(() => {});
-      }, 5000);
-    }
+    await execAsync(`open -n -a Alacritty --args -e ${userShell} -l -i -c "${command}"`);
   }
 }
