@@ -10,6 +10,7 @@ import {
   Form,
   useNavigation,
   confirmAlert,
+  Keyboard,
   Alert,
 } from "@raycast/api";
 import { showFailureToast } from "@raycast/utils";
@@ -577,7 +578,7 @@ export default function Command() {
                         defaultIcon={preferences.defaultProjectIcon}
                       />
                     }
-                    shortcut={{ modifiers: ["cmd"], key: "e" }}
+                    shortcut={Keyboard.Shortcut.Common.Edit}
                   />
                   <Action
                     title="Remove Project"
@@ -598,7 +599,7 @@ export default function Command() {
                       };
                       await confirmAlert(options);
                     }}
-                    shortcut={{ modifiers: ["ctrl"], key: "x" }}
+                    shortcut={Keyboard.Shortcut.Common.Remove}
                   />
                   <ActionPanel.Section>
                     <Action.Push
